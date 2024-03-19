@@ -1,0 +1,192 @@
+﻿Program.Sub.ScreenSU.Start
+Gui.Form..Create(BaseForm)
+Gui.Form..Caption("Inventory Hand")
+Gui.Form..Size(288,146)
+Gui.Form..MinX(0)
+Gui.Form..MinY(0)
+Gui.Form..Position(0,0)
+Gui.Form..AlwaysOnTop(False)
+Gui.Form..FontName("Tahoma")
+Gui.Form..FontSize(8.25)
+Gui.Form..ControlBox(True)
+Gui.Form..MaxButton(False)
+Gui.Form..MinButton(False)
+Gui.Form..MousePointer(0)
+Gui.Form..Moveable(True)
+Gui.Form..Sizeable(True)
+Gui.Form..ShowInTaskBar(True)
+Gui.Form..TitleBar(True)
+Gui.Form.lbl1.Create(Label,"Retroactive date :",True,102,16,0,12,32,True,0,"Tahoma",7.8,,0,0)
+Gui.Form.lbl1.BorderStyle(0)
+Gui.Form.dtp1.Create(DatePicker)
+Gui.Form.dtp1.Enabled(True)
+Gui.Form.dtp1.Visible(True)
+Gui.Form.dtp1.Zorder(0)
+Gui.Form.dtp1.Size(101,22)
+Gui.Form.dtp1.Position(123,29)
+Gui.Form.dtp1.CheckBox(False)
+Gui.Form.dtp1.FontName("Tahoma")
+Gui.Form.dtp1.FontSize(7.8)
+Gui.Form.cmdOK.Create(Button)
+Gui.Form.cmdOK.Enabled(True)
+Gui.Form.cmdOK.Visible(True)
+Gui.Form.cmdOK.Zorder(0)
+Gui.Form.cmdOK.Size(87,29)
+Gui.Form.cmdOK.Position(14,72)
+Gui.Form.cmdOK.Caption("Ok")
+Gui.Form.cmdOK.FontName("Tahoma")
+Gui.Form.cmdOK.FontSize(7.8)
+Gui.Form.cmdOK.Event(Click,CMD_Ok)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+
+Program.Sub.Main.Start
+Function.Intrinsic.UI.UsePixels ' Allows you to use Pixels instead of Twips throughout
+
+F.Intrinsic.Control.Try
+
+gui.Form..Show
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.CallSub(CatchError,"Sub",V.Ambient.CurrentSubroutine,"ErrNo",V.Ambient.ErrorNumber,"ErrDesc",V.Ambient.ErrorDescription)
+F.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.CatchError.Start
+V.local.sError.Declare
+F.Intrinsic.String.Build("{0}*!*{1}*!*{2}", V.Args.Sub, V.Args.ErrNo, V.Args.ErrDesc, V.local.sError)
+f.Intrinsic.UI.Msgbox(V.local.sError)
+	
+Program.Sub.CatchError.End
+Program.Sub.CMD_Ok.Start
+v.Local.ssql.Declare
+v.Local.sDt.Declare
+
+F.Intrinsic.Control.Try
+
+v.Local.sDt.Set(v.Screen.Form!dtp1.Value)
+
+
+F.Intrinsic.UI.InvokeWaitDialog("Loading...","Please Wait...")
+
+F.ODBC.Connection!conx.OpenCompanyConnection(300)
+
+f.Intrinsic.Control.CallSub(Check_Table)
+
+f.Intrinsic.String.Build("select part,sum(quantity) as QTY from v_INVENTORY_HIST where date_history > '{0}' group by part",v.Local.sDt.PervasiveDate,v.Local.ssql)
+f.Data.DataTable.CreateFromSQL("DTData","CONX",V.Local.sSQL)
+
+f.Intrinsic.String.Build("select part,'0' as QTY from Inventory_mstr A where part not  in (select B.part from v_INVENTORY_HIST B where A.part = B.part  and date_history > '{0}')",v.Local.sDt.PervasiveDate,v.Local.ssql)
+f.Data.DataTable.CreateFromSQL("DTData1","CONX",V.Local.sSQL)
+f.Data.DataTable.Merge("DTData1","DTData",True,2)
+
+f.Data.Datatable.Close("DTData1")
+
+f.Data.Datatable.AddColumn("DTData","PL","string")
+f.Data.Datatable.AddColumn("DTData","GLAcct","string")
+f.Data.Datatable.AddColumn("DTData","Cost","float")
+f.Data.Datatable.AddColumn("DTData","On_HandQty","float")
+f.Data.Datatable.AddColumn("DTData","Trml","string")
+
+
+F.Data.Dictionary.CreateFromSQL("INVDIC","CONX","select part,Product_line from v_INVENTORY_MSTR")
+F.Data.Dictionary.SetDefaultReturn("INVDIC",0)
+F.Data.DataTable.FillFromDictionary("DTData","INVDIC","part","PL")
+f.Data.Dictionary.Close("INVDIC")
+
+F.Data.Dictionary.CreateFromSQL("INVDIC","CONX","select part,amt_cost from v_INVENTORY_MSTR ")
+F.Data.Dictionary.SetDefaultReturn("INVDIC",0)
+F.Data.DataTable.FillFromDictionary("DTData","INVDIC","part","Cost")
+f.Data.Dictionary.Close("INVDIC")
+
+F.Data.Dictionary.CreateFromSQL("INVDIC","CONX","select part,QTY_ONHand from v_INVENTORY_MSTR ")
+F.Data.Dictionary.SetDefaultReturn("INVDIC",0)
+F.Data.DataTable.FillFromDictionary("DTData","INVDIC","part","On_HandQty")
+f.Data.Dictionary.Close("INVDIC")
+
+'F.Data.Dictionary.CreateFromSQL("INVDIC","CONX","select PL_NUM,Locn_Purch_Acct from PL_LOCATION")
+F.Data.Dictionary.CreateFromSQL("INVDIC","CONX","select PROD_LINE,GL_ACCT from PL_GL_ACCOUNTS where type = 2")
+F.Data.Dictionary.SetDefaultReturn("INVDIC",0)
+F.Data.DataTable.FillFromDictionary("DTData","INVDIC","PL","GLAcct")
+f.Data.Dictionary.Close("INVDIC")
+
+f.Intrinsic.String.Build("delete from GCG_6676_INVData where Trml = '{0}' ",v.Caller.Terminal,v.Local.ssql)
+F.ODBC.connection!conx.Execute(V.Local.sSQL)
+
+F.Data.DataTable.SetValue("DTData",-1,"Trml",v.Caller.Terminal)
+F.Data.DataTable.SaveToDB("DTData","conx","GCG_6676_INVData","part",256,"part@!@part*!*Cost@!@Cost*!*GLAcct@!@GL_Acct*!*On_HandQty@!@On_HandQty*!*PL@!@PL*!*QTY@!@QTY*!*Trml@!@Trml")
+
+f.Data.Datatable.Close("DTData")
+
+
+
+V.Local.sParams.Declare
+V.Local.sValues.Declare
+V.Local.iBIRunID.Declare
+V.Local.iRptid.Declare
+V.Local.iBILogID.Declare
+V.Local.iRet.Declare
+
+
+
+
+V.Local.sParams.Set("Trml*!*RetroDate")
+f.Intrinsic.String.Build("{0}*!*{1}",v.Caller.Terminal,v.Local.sDt,V.Local.sValues)
+F.Global.BI.GetRunID(V.local.iBIRunID)
+
+F.Global.BI.GetIDFromName("GCG_6676_InvData.rpt",V.Local.iRptid)
+F.Global.BI.StartLogging(V.Local.iBIRunID,V.Local.iRptid,0,"",V.Local.iBILogID)
+
+f.Intrinsic.UI.CloseWaitDialog
+
+F.Intrinsic.Control.If(V.Local.iRptID,<,0)
+	F.Intrinsic.UI.Msgbox("GCG_6676_InvData.rpt is not set in your system","Report not found")
+	F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Else
+	F.Global.BI.RunReportPreProcessor(V.Local.iBIRunID,V.Local.iBILogID,V.Local.sParams,V.Local.sValues,"",-1,True,"",-1,"",-1,"","",V.Local.iRet)
+F.Intrinsic.Control.EndIf
+	
+F.Global.BI.StopLogging(V.local.iBILogID)
+
+
+
+f.ODBC.Connection!conx.Close
+f.Intrinsic.Control.End
+
+F.Intrinsic.Control.Catch
+	f.Intrinsic.UI.CloseWaitDialog
+	F.Intrinsic.Control.CallSub(CatchError,"Sub",V.Ambient.CurrentSubroutine,"ErrNo",V.Ambient.ErrorNumber,"ErrDesc",V.Ambient.ErrorDescription)
+F.Intrinsic.Control.EndTry
+
+Program.Sub.CMD_Ok.End
+
+Program.Sub.Check_Table.Start
+
+F.Intrinsic.Control.Try
+
+V.Local.bExists.Declare
+V.Local.sSQLFinal.Declare
+
+F.ODBC.Connection!conx.TableExists("GCG_6676_INVData",V.Local.bExists)
+F.Intrinsic.Control.If(V.Local.bExists,=,False)
+
+	V.Local.sSQLFinal.set("CREATE TABLE GCG_6676_INVData (Part CHAR(20) NOT NULL,Cost NUMERIC(12,4),GL_Acct VARCHAR(15),PL CHAR(2),On_HandQty NUMERIC(12,4),Qty NUMERIC(12,4),Trml  CHAR(3) ) ")		
+	F.ODBC.Connection!conx.Execute(V.Local.sSQLFinal)
+	
+	V.Local.sSQLFinal.set("ALTER TABLE GCG_6676_INVData ADD CONSTRAINT PK_Part PRIMARY KEY  (Part)")		
+	F.ODBC.Connection!conx.Execute(V.Local.sSQLFinal)
+
+f.Intrinsic.Control.EndIf		
+	
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.CallSub(CatchError,"Sub",V.Ambient.CurrentSubroutine,"ErrNo",V.Ambient.ErrorNumber,"ErrDesc",V.Ambient.ErrorDescription)
+F.Intrinsic.Control.EndTry
+Program.Sub.Check_Table.End
+
+Program.Sub.Comments.Start
+${$5$}$3.0.0.0$}$1
+${$6$}$rnair$}$20220325132728301$}$JUGEdtlNdgRUPvge2DQ26cJ2Nib0UUk8rw9Du6r/QK47cinyj7DTL5uYiytpuLyQiaV3LGCrTIs=
+Program.Sub.Comments.End
